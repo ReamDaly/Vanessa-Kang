@@ -1,0 +1,4 @@
+__pycache__/
+actions.log/
+vault.bin/
+master.hash/
