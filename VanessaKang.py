@@ -37,12 +37,19 @@ from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
+# Try to import pyperclip for clipboard functionality
+try:
+    import pyperclip
+    CLIPBOARD_AVAILABLE = True
+except ImportError:
+    CLIPBOARD_AVAILABLE = False
+
 try:
     from cryptography.fernet import Fernet
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 except Exception as e:
-    print("\t\tThis program requires the 'cryptography' package. Install it with: pip install cryptography")
+    print("This program requires the 'cryptography' package. Install it with: pip install cryptography")
     sys.exit(1)
 
 MASTER_HASH_FILE = 'master.hash'
@@ -57,8 +64,58 @@ BACKUP_SUBDIRS = {
 TIMEOUT_SECONDS = 90 * 60  # 90 minutes in seconds
 MAX_BACKUPS = 20  # Keep last 20 backups
 
+# ANSI Color codes for beautiful output
+CYAN = '\033[96m'
+GREEN = '\033[92m'
+YELLOW = '\033[93m'
+RED = '\033[91m'
+BLUE = '\033[94m'
+MAGENTA = '\033[95m'
+GRAY = '\033[90m'
+BOLD = '\033[1m'
+DIM = '\033[2m'
+REVERSE = '\033[7m'
+RESET = '\033[0m'
+
 # Global variable to track last activity time
 last_activity_time = time.time()
+
+
+def print_header(text, color=CYAN):
+    """Print a centered header with decorative borders."""
+    try:
+        terminal_width = os.get_terminal_size().columns
+    except:
+        terminal_width = 80
+    
+    text_len = len(text)
+    padding = (terminal_width - text_len - 4) // 2
+    border = '═' * (terminal_width - 4)
+    
+    print(f'\n{color}╔{border}╗{RESET}')
+    print(f'{color}║{" " * padding}{BOLD}{text}{RESET}{color}{" " * (terminal_width - text_len - padding - 4)}║{RESET}')
+    print(f'{color}╚{border}╝{RESET}\n')
+
+
+def print_info(label, value, color=CYAN):
+    """Print information in a formatted way."""
+    if value:
+        print(f'{GRAY}  ▸ {RESET}{BOLD}{label}:{RESET} {color}{value}{RESET}')
+
+
+def print_success(message):
+    """Print a success message."""
+    print(f'{GREEN}✓ {message}{RESET}')
+
+
+def print_error(message):
+    """Print an error message."""
+    print(f'{RED}✗ {message}{RESET}')
+
+
+def print_warning(message):
+    """Print a warning message."""
+    print(f'{YELLOW}⚠ {message}{RESET}')
 
 
 def update_activity_time():
@@ -72,7 +129,7 @@ def check_timeout():
     global last_activity_time
     elapsed = time.time() - last_activity_time
     if elapsed >= TIMEOUT_SECONDS:
-        print('\n\t\tSession timed out due to inactivity (90 minutes). Exiting for security.')
+        print('Session timed out due to inactivity (90 minutes). Exiting for security.')
         sys.exit(0)
 
 
@@ -183,7 +240,7 @@ def pretty_input(prompt):
         update_activity_time()  # Update activity time after input
         return result
     except (KeyboardInterrupt, EOFError):
-        print('\n\t\tExiting...')
+        print('Exiting...')
         sys.exit(0)
 
 
@@ -220,6 +277,245 @@ def masked_input(prompt):
     update_activity_time()  # Update activity time after input
     return password
 
+
+def interactive_menu():
+    """Display an interactive menu with arrow key navigation and colored selection.
+    Returns the selected option number as a string.
+    """
+    check_timeout()  # Check for timeout
+    
+    # ANSI color codes
+    CLEAR_SCREEN = '\033[2J\033[H'
+    RESET = '\033[0m'
+    CYAN = '\033[96m'
+    BOLD = '\033[1m'
+    REVERSE = '\033[7m'
+    DIM = '\033[2m'
+    
+    # Menu options with descriptions
+    options = [
+        ('1', 'Create entry', 'Add new credential'),
+        ('2', 'Read / View entry', 'Search and view credentials'),
+        ('3', 'Update entry', 'Modify existing entry'),
+        ('4', 'Delete entry', 'Remove entry permanently'),
+        ('5', 'List all websites', 'Display all entries'),
+        ('6', 'View action log', 'Show action history'),
+        ('7', 'Clear action log', 'Remove old log entries'),
+        ('8', 'Restore from backup', 'Restore from backup files'),
+        ('9', 'Change master password', 'Update master password'),
+        ('c', 'Clear', 'Clear this terminal session'),
+        ('a', 'About', 'About this program'),
+        ('0', 'Exit', 'Close application'),
+    ]
+    
+    selected_idx = 0
+    total_options = len(options)
+    
+    while True:
+        # Clear screen and render menu
+        print(CLEAR_SCREEN, end='')
+        
+        # Title - Always show full logo
+        print(f'{CYAN}')
+        print('  ██╗   ██╗ █████╗ ███╗   ██╗███████╗███████╗███████╗ █████╗     ██╗  ██╗ █████╗ ███╗   ██╗ ██████╗ ')
+        print('  ██║   ██║██╔══██╗████╗  ██║██╔════╝██╔════╝██╔════╝██╔══██╗    ██║ ██╔╝██╔══██╗████╗  ██║██╔════╝ ')
+        print('  ██║   ██║███████║██╔██╗ ██║█████╗  ███████╗███████╗███████║    █████╔╝ ███████║██╔██╗ ██║██║  ███╗')
+        print('  ╚██╗ ██╔╝██╔══██║██║╚██╗██║██╔══╝  ╚════██║╚════██║██╔══██║    ██╔═██╗ ██╔══██║██║╚██╗██║██║   ██║')
+        print('   ╚████╔╝ ██║  ██║██║ ╚████║███████╗███████║███████║██║  ██║    ██║  ██╗██║  ██║██║ ╚████║╚██████╔╝')
+        print('    ╚═══╝  ╚═╝  ╚═╝╚═╝  ╚═══╝╚══════╝╚══════╝╚══════╝╚═╝  ╚═╝    ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝ ╚═════╝ ')
+        print(f'{RESET}\n')
+        
+        # Display options
+        for idx, (num, label, description) in enumerate(options):
+            if idx == selected_idx:
+                # Highlighted option
+                print(f'{REVERSE}{CYAN}  ► {label:<25}{RESET}  {BOLD}{description}{RESET}')
+            else:
+                # Normal option
+                print(f'{DIM}    {label:<25}{RESET}  {description}')
+        
+        print(f'\n{DIM}  ({total_options} options | Use ↑↓ arrows and Enter to select){RESET}')
+        
+        # Read arrow keys
+        key = msvcrt.getch()
+        
+        if key == b'\xe0' or key == b'\x00':  # Arrow key prefix
+            key = msvcrt.getch()
+            if key == b'H':  # Up arrow
+                selected_idx = (selected_idx - 1) % total_options
+            elif key == b'P':  # Down arrow
+                selected_idx = (selected_idx + 1) % total_options
+        elif key == b'\r':  # Enter key
+            update_activity_time()
+            return options[selected_idx][0]
+        elif key == b'\x1b':  # ESC key
+            update_activity_time()
+            return '0'
+        elif key in (b'k', b'K'):  # Vim-style up
+            selected_idx = (selected_idx - 1) % total_options
+        elif key in (b'j', b'J'):  # Vim-style down
+            selected_idx = (selected_idx + 1) % total_options
+        # Ignore other keys
+
+
+def input_box(prompt):
+    """Display a modern input box with border like Gemini CLI.
+    Returns the user input as a string.
+    """
+    check_timeout()
+    
+    # ANSI color codes
+    CYAN = '\033[96m'
+    RESET = '\033[0m'
+    GRAY = '\033[90m'
+    
+    # Get terminal width
+    try:
+        terminal_width = os.get_terminal_size().columns
+    except:
+        terminal_width = 80
+    
+    # Calculate box width (responsive, leave margin)
+    box_width = min(terminal_width - 10, 120)
+    if box_width < 40:
+        box_width = max(terminal_width - 4, 30)
+    
+    # Shorten prompt if too long to fit in box
+    max_prompt_len = box_width - 6
+    if len(prompt) > max_prompt_len:
+        prompt = prompt[:max_prompt_len - 3] + '...'
+    
+    # Print complete box first
+    print(f'\n{CYAN}╭{"─" * (box_width - 2)}╮{RESET}')
+    print(f'{CYAN}│{" " * (box_width - 2)}│{RESET}')
+    print(f'{CYAN}╰{"─" * (box_width - 2)}╯{RESET}')
+    
+    # Move cursor up 2 lines and position inside the box
+    print('\033[2A', end='')  # Move up 2 lines
+    print('\r', end='')  # Move to start of line
+    print(f'{CYAN}│{RESET} {GRAY}{prompt}{RESET} ', end='', flush=True)
+    
+    # Get input using manual character reading
+    user_input = ''
+    cursor_pos = 2 + len(prompt) + 1  # Starting position after "│ prompt "
+    
+    while True:
+        char = msvcrt.getch()
+        
+        # Enter key
+        if char in (b'\r', b'\n'):
+            # Move to next line after the box
+            print('\r', end='')
+            print('\033[2B', end='')  # Move down 2 lines
+            print()
+            break
+        # Backspace
+        elif char == b'\x08':
+            if len(user_input) > 0:
+                user_input = user_input[:-1]
+                print('\b \b', end='', flush=True)
+                cursor_pos -= 1
+        # Ctrl+C
+        elif char == b'\x03':
+            print('\r', end='')
+            print('\033[2B', end='')  # Move down 2 lines
+            print()
+            raise KeyboardInterrupt
+        # Normal character
+        else:
+            try:
+                decoded = char.decode('utf-8')
+                # Check if we have space in the box
+                if cursor_pos < box_width - 2:
+                    user_input += decoded
+                    print(decoded, end='', flush=True)
+                    cursor_pos += 1
+            except:
+                pass
+    
+    update_activity_time()
+    return user_input.strip()
+
+
+def masked_input_box(prompt):
+    """Display a modern input box with border and masked input (asterisks).
+    Returns the user input as a string.
+    """
+    check_timeout()
+    
+    # ANSI color codes
+    CYAN = '\033[96m'
+    RESET = '\033[0m'
+    GRAY = '\033[90m'
+    
+    # Get terminal width
+    try:
+        terminal_width = os.get_terminal_size().columns
+    except:
+        terminal_width = 80
+    
+    # Calculate box width (responsive, leave margin)
+    box_width = min(terminal_width - 10, 120)
+    if box_width < 40:
+        box_width = max(terminal_width - 4, 30)
+    
+    # Shorten prompt if too long to fit in box
+    max_prompt_len = box_width - 6
+    if len(prompt) > max_prompt_len:
+        prompt = prompt[:max_prompt_len - 3] + '...'
+    
+    # Print complete box first
+    print(f'\n{CYAN}╭{"─" * (box_width - 2)}╮{RESET}')
+    print(f'{CYAN}│{" " * (box_width - 2)}│{RESET}')
+    print(f'{CYAN}╰{"─" * (box_width - 2)}╯{RESET}')
+    
+    # Move cursor up 2 lines and position inside the box
+    print('\033[2A', end='')  # Move up 2 lines
+    print('\r', end='')  # Move to start of line
+    print(f'{CYAN}│{RESET} {GRAY}{prompt}{RESET} ', end='', flush=True)
+    
+    # Get masked input
+    password = ''
+    cursor_pos = 2 + len(prompt) + 1  # Starting position after "│ prompt "
+    
+    while True:
+        char = msvcrt.getch()
+        
+        # Enter key
+        if char in (b'\r', b'\n'):
+            # Move to next line after the box
+            print('\r', end='')
+            print('\033[2B', end='')  # Move down 2 lines
+            print()
+            break
+        # Backspace
+        elif char == b'\x08':
+            if len(password) > 0:
+                password = password[:-1]
+                print('\b \b', end='', flush=True)
+                cursor_pos -= 1
+        # Ctrl+C
+        elif char == b'\x03':
+            print('\r', end='')
+            print('\033[2B', end='')  # Move down 2 lines
+            print()
+            raise KeyboardInterrupt
+        # Normal character
+        else:
+            try:
+                decoded = char.decode('utf-8')
+                # Check if we have space in the box
+                if cursor_pos < box_width - 2:
+                    password += decoded
+                    print('*', end='', flush=True)
+                    cursor_pos += 1
+            except:
+                pass
+    
+    update_activity_time()
+    return password
+
+
 def derive_key(password: bytes, salt: bytes) -> bytes:
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
@@ -231,20 +527,22 @@ def derive_key(password: bytes, salt: bytes) -> bytes:
 
 
 def set_master_password():
-    print('\n\t\tNo master password found. Let\'s create one.')
+    print(f'\n{YELLOW}No master password found. Let\'s create one!{RESET}')
     while True:
-        pw1 = masked_input('\n\t\tEnter new master password: ')
-        pw2 = masked_input('\t\tRepeat master password: ')
+        pw1 = masked_input_box('New master password:')
+        pw2 = masked_input_box('Repeat password:')
         if pw1 != pw2:
-            print('\n\t\tPasswords do not match. Try again.')
+            print_error('Passwords do not match. Try again.')
             continue
         if not is_strong_password(pw1):
-            print('\n\t\tPassword not strong enough. Requirements: at least 12 chars, upper, lower, digit, symbol.')
-            choice = pretty_input('\t\tDo you want automatic strong password suggestion? (y/n): ').strip().lower()
+            print_error('Password not strong enough!')
+            print(f'{GRAY}Requirements: at least 8 chars, upper, lower, digit, symbol.{RESET}')
+            choice = input_box('Auto-generate password? (y/n):').strip().lower()
             if choice == 'y':
                 suggested = generate_strong_password(16)
-                print('\n\t\tSuggested strong password (copy and save it somewhere safe):', suggested)
-                use = pretty_input('\n\t\tUse this suggested password? (y to use, anything else to try again): ').strip().lower()
+                print(f'\n{GREEN}Generated strong password:{RESET} {BOLD}{suggested}{RESET}')
+                print(f'{YELLOW}⚠ Copy and save it somewhere safe!{RESET}')
+                use = input_box('Use this password? (y/n):').strip().lower()
                 if use == 'y':
                     pw1 = suggested
                 else:
@@ -261,7 +559,7 @@ def set_master_password():
         save_vault(empty, pw1)
         write_log('SET_MASTER')
         backup_files()  # Backup after setting master password
-        print('\n\t\tMaster password saved.')
+        print_success('Master password created and saved!')
         return
 
 def load_master_salt_and_token():
@@ -300,7 +598,7 @@ def load_vault(master_password: str):
         dec = fernet.decrypt(token)
         return json.loads(dec.decode('utf-8'))
     except Exception:
-        raise ValueError('\n\t\tUnable to decrypt vault. Wrong master password or corrupted vault.')
+        raise ValueError('Unable to decrypt vault. Wrong master password or corrupted vault.')
 
 
 def save_vault(vault_dict: dict, master_password: str):
@@ -333,48 +631,58 @@ def generate_strong_password(length=16):
         
 
 def create_entry(vault):
-    name = pretty_input('\t\tWebsite name: ').strip()
+    name = input_box('Website name:').strip()
     if not name:
-        print('\t\tWebsite name cannot be empty.')
+        print_error('Website name cannot be empty.')
         return vault
-    account = pretty_input('\t\tGmail / Microsoft account email (optional): ').strip()
+    account = input_box('Account email (optional):').strip()
     if account and '@' not in account:
-        print('\t\tWarning: the email you entered does not look like a valid email. Saving as entered.')
+        print_warning('The email you entered does not look valid. Saving as entered.')
     
     # New optional fields
-    username = pretty_input('\t\tUsername (optional): ').strip()
-    phone_number = pretty_input('\t\tPhone number (optional): ').strip()
+    username = input_box('Username (optional):').strip()
+    phone_number = input_box('Phone number (optional):').strip()
     
-    print('\t\t1) Input your own password (no strength checking)')
-    print('\t\t2) Generate a strong password for me')
-    choice = pretty_input('\t\tChoose (1 or 2): ').strip()
+    # Description field (max 30 words)
+    description = input_box('Description (optional, max 30 words):').strip()
+    if description:
+        words = description.split()
+        if len(words) > 30:
+            description = ' '.join(words[:30])
+            print_warning(f'Description truncated to 30 words.')
+    
+    print(f'\n{CYAN}Password Options:{RESET}')
+    print(f'  {CYAN}1){RESET} Input your own password')
+    print(f'  {CYAN}2){RESET} Generate a strong password')
+    choice = input_box('Choose (1 or 2):').strip()
     if choice == '1':
-        pw = masked_input('\t\tEnter password for %s: ' % name)
+        pw = masked_input_box('Enter password for %s:' % name)
     else:
         while True:
-            length_s = pretty_input('\t\tGenerated password length (8-16, default 16): ').strip()
+            length_s = input_box('Password length (8-16, default 16):').strip()
             if not length_s:
                 length = 16
                 break
             try:
                 length = int(length_s)
             except Exception:
-                print('\t\tPlease enter a number between 8 and 16.')
+                print_error('Please enter a number between 8 and 16.')
                 continue
             if length < 8 or length > 16:
-                print('\t\tLength must be between 8 and 16. Try again.')
+                print_error('Length must be between 8 and 16. Try again.')
                 continue
             break
         pw = generate_strong_password(length)
-        print('\t\tGenerated password: ', pw)
+        print_success(f'Generated password: {GREEN}{pw}{RESET}')
     vault[name] = {
         'password': pw,
         'account': account,
         'username': username,
         'phone_number': phone_number,
+        'description': description,
         'created': datetime.datetime.now().timestamp()
     }
-    print('\t\tSaved.')
+    print_success('Entry saved successfully!')
     write_log('CREATE', name)
     return vault
 
@@ -382,7 +690,7 @@ def create_entry(vault):
 def list_websites(vault):
     def _inner(max_items=None):
         if not vault:
-            print('\t\tNo entries.')
+            print_warning('No entries found.')
             return
         def _created_key(k):
             e = vault.get(k)
@@ -390,12 +698,60 @@ def list_websites(vault):
                 return e.get('created', 0)
             return 0
         keys = sorted(vault.keys(), key=_created_key, reverse=True)
-        print('\t\tStored websites:')
+        
+        # Print header
+        total = len(keys)
+        if max_items:
+            print_header(f'Stored Websites (Showing {min(max_items, total)} of {total})', CYAN)
+        else:
+            print_header(f'All Stored Websites ({total} entries)', CYAN)
+        
+        # Calculate column widths
+        try:
+            terminal_width = os.get_terminal_size().columns
+        except:
+            terminal_width = 120
+        
+        # Reserve space: "  99. " = 6 chars, then website name (30 chars), then description (rest)
+        num_width = 6
+        website_width = 35
+        desc_start = num_width + website_width + 3  # 3 for " │ "
+        max_desc_width = terminal_width - desc_start - 5
+        
+        if max_desc_width < 20:
+            max_desc_width = 20
+        
+        # Print column headers
+        print(f'  {BOLD}{CYAN}{"WEBSITE":<{website_width}}{RESET} {GRAY}│{RESET} {BOLD}{CYAN}DESCRIPTION{RESET}')
+        print(f'  {GRAY}{"─" * website_width} ┼ {"─" * max_desc_width}{RESET}')
+        
         to_show = keys if (max_items is None) else keys[:max_items]
         for i, k in enumerate(to_show, 1):
-            print(f"\t\t{i}. {k}")
+            # Get description
+            entry = vault.get(k)
+            if isinstance(entry, dict):
+                desc = entry.get('description', '')
+            else:
+                desc = ''
+            
+            # Truncate description if too long
+            if desc:
+                if len(desc) > max_desc_width:
+                    desc = desc[:max_desc_width - 3] + '...'
+            else:
+                desc = f'{GRAY}(no description){RESET}'
+            
+            # Truncate website name if too long
+            display_name = k
+            if len(k) > website_width - 5:
+                display_name = k[:website_width - 8] + '...'
+            
+            # Print row
+            print(f'  {CYAN}{i:2d}.{RESET} {BOLD}{display_name:<{website_width - 4}}{RESET} {GRAY}│{RESET} {desc}')
+        
         if max_items is not None and len(keys) > max_items:
-            print('\t\t...')
+            print(f'\n  {GRAY}... and {len(keys) - max_items} more entries{RESET}')
+        print()
     return _inner
 
 
@@ -413,29 +769,31 @@ def search_entries(vault, query):
 def read_entry(vault):
     list_short = list_websites(vault)
     list_short(5)
-    q = pretty_input('\n\t\tEnter website name to search (or partial): ').strip()
+    q = input_box('Website to search:').strip()
     matches = search_entries(vault, q)
     if not matches:
-        print('\n\t\tNo matches found.')
+        print_warning('No matches found.')
         return
     if len(matches) == 1:
         chosen = matches[0]
     else:
-        print('\t\tMatches:')
+        print(f'\n{CYAN}╔══════════════════════════════╗{RESET}')
+        print(f'{CYAN}║{RESET}  {BOLD}Matching Entries{RESET}           {CYAN}║{RESET}')
+        print(f'{CYAN}╚══════════════════════════════╝{RESET}\n')
         for idx, m in enumerate(matches, 1):
-            print(f"\t\t{idx}. {m}")
-        sel = pretty_input('\t\tChoose number or 0 to cancel: ').strip()
+            print(f"  {CYAN}{idx}.{RESET} {m}")
+        sel = input_box('Choose number or 0 to cancel:').strip()
         try:
             si = int(sel)
             if si == 0:
                 return
             chosen = matches[si-1]
         except Exception:
-            print('\t\tInvalid selection.')
+            print_error('Invalid selection.')
             return
-    mpw = masked_input('\t\tEnter master password: ')
+    mpw = masked_input_box('Enter master password:')
     if not verify_master(mpw):
-        print('\n\t\tMaster password incorrect.')
+        print('\nMaster password incorrect.')
         write_log('READ_FAILED', chosen)
         return
     entry = vault[chosen]
@@ -444,58 +802,133 @@ def read_entry(vault):
         acct = entry.get('account')
         username = entry.get('username')
         phone = entry.get('phone_number')
+        desc = entry.get('description')
     else:
         pw = entry
         acct = None
         username = None
         phone = None
-    print(f'\n\t\tWebsite: {chosen}')
+        desc = None
+    
+    # Display entry details in a beautiful format
+    print_header(f'Entry Details: {chosen}', GREEN)
+    print_info('Website', chosen, BOLD + CYAN)
     if acct:
-        print(f'\t\tAccount: {acct}')
+        print_info('Account', acct, YELLOW)
     if username:
-        print(f'\t\tUsername: {username}')
+        print_info('Username', username, MAGENTA)
     if phone:
-        print(f'\t\tPhone Number: {phone}')
-    print(f'\t\tPassword: {pw}')
+        print_info('Phone Number', phone, BLUE)
+    if desc:
+        print_info('Description', desc, GRAY)
+    print_info('Password', pw, GREEN)
+    print()
+    
+    # Copy password functionality
+    if CLIPBOARD_AVAILABLE:
+        copy_choice = input_box('Copy password to clipboard? (y/N):').strip().lower()
+        if copy_choice == 'y':
+            try:
+                pyperclip.copy(pw)
+                print_success('Password copied to clipboard!')
+            except Exception as e:
+                print_error(f'Failed to copy: {e}')
+    else:
+        print_warning('Install pyperclip to enable password copying (pip install pyperclip)')
+    
     write_log('READ', chosen)
 
 
 def update_entry(vault):
     if not vault:
-        print('\t\tNo entries.')
+        print_warning('No entries found.')
         return vault
     list_short = list_websites(vault)
     list_short(5)
-    name = pretty_input('\n\t\tEnter website name to update (or partial): ').strip()
+    name = input_box('Website to update:').strip()
     matches = search_entries(vault, name)
     if not matches:
-        print('\t\tNo matches.')
+        print_warning('No matches found.')
         return vault
     if len(matches) == 1:
         chosen = matches[0]
     else:
+        print(f'\n{YELLOW}Matching entries:{RESET}')
         for idx, m in enumerate(matches, 1):
-            print(f"\n\t\t{idx}. {m}")
-        sel = pretty_input('\t\tChoose number or 0 to cancel: ').strip()
+            print(f"  {CYAN}{idx}.{RESET} {m}")
+        sel = input_box('Choose number or 0 to cancel: ').strip()
         try:
             si = int(sel)
             if si == 0:
                 return vault
             chosen = matches[si-1]
         except Exception:
-            print('\t\tInvalid selection.')
+            print_error('Invalid selection.')
             return vault
-    print('\t\tWhat do you want to change?')
-    print('\t\t1) Change website name')
-    print('\t\t2) Change password')
-    print('\t\t3) Change account (Gmail/Microsoft email)')
-    print('\t\t4) Change username')
-    print('\t\t5) Change phone number')
-    print('\t\t0) Cancel')
-    choice = pretty_input('\t\tChoose (1/2/3/4/5/0): ').strip()
+    
+    # Interactive menu for update options
+    update_options = [
+        ('1', 'Change website name'),
+        ('2', 'Change password'),
+        ('3', 'Change account'),
+        ('4', 'Change username'),
+        ('5', 'Change phone number'),
+        ('6', 'Change description'),
+        ('0', 'Cancel'),
+    ]
+    
+    selected_idx = 0
+    total_options = len(update_options)
+    
+    while True:
+        # Clear screen and show header
+        print('\033[2J\033[H', end='')  # Clear screen
+        print(f'\n{CYAN}╔══════════════════════════════════╗{RESET}')
+        print(f'{CYAN}║{RESET}  {BOLD}What would you like to change?{RESET}  {CYAN}║{RESET}')
+        print(f'{CYAN}╚══════════════════════════════════╝{RESET}\n')
+        
+        # Display options
+        for idx, (num, label) in enumerate(update_options):
+            if idx == selected_idx:
+                # Highlighted option
+                if num == '0':
+                    print(f'  {REVERSE}{RED}► {label}{RESET}')
+                else:
+                    print(f'  {REVERSE}{CYAN}► {label}{RESET}')
+            else:
+                # Normal option
+                if num == '0':
+                    print(f'  {DIM}{RED}{label}{RESET}')
+                else:
+                    print(f'  {DIM}{label}{RESET}')
+        
+        print(f'\n{DIM}  (Use ↑↓ arrows and Enter to select){RESET}')
+        
+        # Read arrow keys
+        key = msvcrt.getch()
+        
+        if key == b'\xe0' or key == b'\x00':  # Arrow key prefix
+            key = msvcrt.getch()
+            if key == b'H':  # Up arrow
+                selected_idx = (selected_idx - 1) % total_options
+            elif key == b'P':  # Down arrow
+                selected_idx = (selected_idx + 1) % total_options
+        elif key == b'\r':  # Enter key
+            choice = update_options[selected_idx][0]
+            break
+        elif key == b'\x1b':  # ESC key
+            choice = '0'
+            break
+        elif key in (b'k', b'K'):  # Vim-style up
+            selected_idx = (selected_idx - 1) % total_options
+        elif key in (b'j', b'J'):  # Vim-style down
+            selected_idx = (selected_idx + 1) % total_options
+    
+    # Clear screen after selection
+    print('\033[2J\033[H', end='')
     
     if choice == '0':
-        print('\t\tCancelled.')
+        print_warning('Update cancelled.')
         return vault
     
     existing = vault.get(chosen)
@@ -505,51 +938,61 @@ def update_entry(vault):
         new_acct = existing.get('account')
         new_username = existing.get('username')
         new_phone = existing.get('phone_number')
+        new_desc = existing.get('description')
     else:
         new_name = chosen
         new_pw = existing
         new_acct = None
         new_username = None
         new_phone = None
+        new_desc = None
     if choice == '1':
-        new_name = pretty_input('\t\tNew website name: ').strip()
+        new_name = input_box('New website name: ').strip()
         if not new_name:
-            print('\t\tInvalid name.')
+            print_error('Invalid name.')
             return vault
     if choice == '3':
-        new_acct = pretty_input('\t\tNew account email (leave blank to clear): ').strip()
+        new_acct = input_box('New account (optional): ').strip()
         if new_acct and '@' not in new_acct:
-            print('\t\tWarning: the email you entered does not look like a valid email. Saving as entered.')
+            print_warning('The email does not look valid. Saving as entered.')
     if choice == '4':
-        new_username = pretty_input('\t\tNew username (leave blank to clear): ').strip()
+        new_username = input_box('New username (optional): ').strip()
     if choice == '5':
-        new_phone = pretty_input('\t\tNew phone number (leave blank to clear): ').strip()
+        new_phone = input_box('New phone (optional): ').strip()
+    if choice == '6':
+        new_desc = input_box('New description (max 30 words): ').strip()
+        if new_desc:
+            words = new_desc.split()
+            if len(words) > 30:
+                new_desc = ' '.join(words[:30])
+                print_warning('Description truncated to 30 words.')
     if choice == '2':
-        print('\t\t1) Input your own password (no strength checking)')
-        print('\t\t2) Generate a strong password for me')
-        c2 = pretty_input('\t\tChoose (1 or 2): ').strip()
+        print(f'\n{CYAN}Password Options:{RESET}')
+        print(f'  {CYAN}1){RESET} Input your own password')
+        print(f'  {CYAN}2){RESET} Generate a strong password')
+        c2 = input_box('Choose (1 or 2): ').strip()
         if c2 == '1':
-            new_pw = masked_input('\t\tEnter new password: ')
+            new_pw = masked_input_box('Enter new password: ')
         else:
             while True:
-                length_s = pretty_input('\t\tGenerated password length (8-16, default 16): ').strip()
+                length_s = input_box('Password length (8-16, default 16): ').strip()
                 if not length_s:
                     length = 16
                     break
                 try:
                     length = int(length_s)
                 except Exception:
-                    print('\t\tPlease enter a number between 8 and 16.')
+                    print_error('Please enter a number between 8 and 16.')
                     continue
                 if length < 8 or length > 16:
-                    print('\t\tLength must be between 8 and 16. Try again.')
+                    print_error('Length must be between 8 and 16. Try again.')
                     continue
                 break
             new_pw = generate_strong_password(length)
-            print('\t\tGenerated password: ', new_pw)
-    mpw = masked_input('\t\tEnter master password to confirm update: ')
+            print_success(f'Generated password: {GREEN}{new_pw}{RESET}')
+    mpw = masked_input_box('Master password: ')
     if not verify_master(mpw):
-        print('\t\tMaster password incorrect. Update cancelled.')
+        print_error('Master password incorrect. Update cancelled.')
         write_log('UPDATE_FAILED', chosen)
         return vault
     if new_name != chosen:
@@ -568,79 +1011,102 @@ def update_entry(vault):
         'account': new_acct,
         'username': new_username,
         'phone_number': new_phone,
+        'description': new_desc,
         'created': created_val
     }
     save_vault(vault, mpw)
-    print('\t\tUpdated.')
+    print_success('Entry updated successfully!')
     write_log('UPDATE', new_name)
     return vault
 
 
 def delete_entry(vault):
     if not vault:
-        print('\t\tNo entries.')
+        print_warning('No entries found.')
         return vault
     list_short = list_websites(vault)
     list_short(5)
-    name = pretty_input('\t\tEnter website name to delete (or partial): ').strip()
+    name = input_box('Website to delete: ').strip()
     matches = search_entries(vault, name)
     if not matches:
-        print('\t\tNo matches.')
+        print_warning('No matches found.')
         return vault
     if len(matches) == 1:
         chosen = matches[0]
     else:
+        print(f'\n{YELLOW}Matching entries:{RESET}')
         for idx, m in enumerate(matches, 1):
-            print(f"\t\t{idx}. {m}")
-        sel = pretty_input('\t\tChoose number or 0 to cancel: ').strip()
+            print(f"  {CYAN}{idx}.{RESET} {m}")
+        sel = input_box('Choose number or 0 to cancel: ').strip()
         try:
             si = int(sel)
             if si == 0:
                 return vault
             chosen = matches[si-1]
         except Exception:
-            print('\t\tInvalid selection.')
+            print_error('Invalid selection.')
             return vault
     
     # Display entry details before deletion
     entry = vault[chosen]
-    print(f'\n\t\tEntry to delete:')
-    print(f'\t\tWebsite: {chosen}')
+    print(f'\n{RED}╔═══════════════════════════════╗{RESET}')
+    print(f'{RED}║{RESET}  {BOLD}Entry to be deleted{RESET}          {RED}║{RESET}')
+    print(f'{RED}╚═══════════════════════════════╝{RESET}\n')
+    print_info('Website', chosen, RED + BOLD)
     if isinstance(entry, dict):
         if entry.get('account'):
-            print(f'\t\tAccount: {entry.get("account")}')
+            print_info('Account', entry.get("account"), YELLOW)
         if entry.get('username'):
-            print(f'\t\tUsername: {entry.get("username")}')
+            print_info('Username', entry.get("username"), MAGENTA)
         if entry.get('phone_number'):
-            print(f'\t\tPhone Number: {entry.get("phone_number")}')
+            print_info('Phone Number', entry.get("phone_number"), BLUE)
+        if entry.get('description'):
+            print_info('Description', entry.get("description"), GRAY)
+    print()
     
-    confirm = pretty_input(f'\n\t\tAre you sure you want to delete "{chosen}"? (y/N): ').strip().lower()
+    confirm = input_box(f'Delete "{chosen}"? (y/N):').strip().lower()
     if confirm != 'y':
-        print('\t\tCancelled.')
+        print_warning('Deletion cancelled.')
         return vault
-    mpw = masked_input('\t\tEnter master password to confirm deletion: ')
+    mpw = masked_input_box('Master password: ')
     if not verify_master(mpw):
-        print('\t\tMaster password incorrect. Deletion cancelled.')
+        print_error('Master password incorrect. Deletion cancelled.')
         write_log('DELETE_FAILED', chosen)
         return vault
     vault.pop(chosen, None)
     save_vault(vault, mpw)
-    print('\n\t\tDeleted.')
+    print_success(f'Entry "{chosen}" deleted successfully!')
     write_log('DELETE', chosen)
     return vault
 
 
 def view_log():
     if not os.path.exists(LOG_FILE):
-        print('\t\tNo log yet.')
+        print_warning('No log file found yet.')
         return
-    print('\n\t\tACTION LOG:')
+    
+    # Use CYAN color like the website list
+    print_header('Action Log History', CYAN)
+    
+    # Calculate column widths
+    try:
+        terminal_width = os.get_terminal_size().columns
+    except:
+        terminal_width = 120
+    
     TS_W = 19
-    ACT_W = 15
+    ACT_W = 20
+    website_start = TS_W + ACT_W + 8
+    max_website_width = terminal_width - website_start - 5
+    
+    if max_website_width < 20:
+        max_website_width = 20
+    
+    # Print column headers with separator
+    print(f'  {BOLD}{CYAN}{"TIMESTAMP":<{TS_W}}{RESET} {GRAY}│{RESET} {BOLD}{CYAN}{"ACTION":<{ACT_W}}{RESET} {GRAY}│{RESET} {BOLD}{CYAN}WEBSITE{RESET}')
+    print(f'  {GRAY}{"─" * TS_W} ┼ {"─" * ACT_W} ┼ {"─" * max_website_width}{RESET}')
+    
     with open(LOG_FILE, 'r', encoding='utf-8') as f:
-        header = f"\t\t{'TIMESTAMP':{TS_W}} | {'ACTION':{ACT_W}} | WEBSITE"
-        print(header)
-        print('\t\t' + '-' * (TS_W + 3 + ACT_W + 3 + 20))
         for line in f:
             s = line.strip()
             parts = [p.strip() for p in s.split('|')]
@@ -648,15 +1114,30 @@ def view_log():
                 ts = parts[0]
                 action = parts[1]
                 website = ' | '.join(parts[2:])
-                print(f"\t\t{ts:{TS_W}} | {action:{ACT_W}} | {website}")
+                
+                # Truncate website if too long
+                if len(website) > max_website_width:
+                    website = website[:max_website_width - 3] + '...'
+                
+                # Color code actions
+                if 'FAILED' in action:
+                    action_color = RED
+                elif 'SUCCESS' in action or 'CREATE' in action or 'UPDATE' in action:
+                    action_color = GREEN
+                elif 'DELETE' in action:
+                    action_color = YELLOW
+                else:
+                    action_color = CYAN
+                
+                print(f"  {GRAY}{ts:<{TS_W}}{RESET} {GRAY}│{RESET} {action_color}{action:<{ACT_W}}{RESET} {GRAY}│{RESET} {website}")
             else:
-                print('\t\t' + s)
-    print('\t\t')
+                print(f'  {s}')
+    print()
 
 
 def clear_log():
     if not os.path.exists(LOG_FILE):
-        print('\t\tNo log to clear.')
+        print_warning('No log file found to clear.')
         return
     
     # Read all log entries
@@ -665,80 +1146,128 @@ def clear_log():
     
     total_entries = len(lines)
     if total_entries == 0:
-        print('\t\tLog is already empty.')
+        print_warning('Log is already empty.')
         return
     
-    print(f'\n\t\tTotal log entries: {total_entries}')
-    print('\t\tClear options:')
-    print('\t\t1) Clear last 10 entries')
-    print('\t\t2) Clear last 20 entries')
-    print('\t\t3) Clear all entries')
-    print('\t\t0) Cancel')
+    print(f'\n{CYAN}Total log entries: {BOLD}{total_entries}{RESET}\n')
+    print(f'{CYAN}Clear Options:{RESET}')
+    print(f'  • Enter a {BOLD}number{RESET} (1-{total_entries}) to clear that many oldest entries')
+    print(f'  • Enter {RED}{BOLD}0{RESET} to clear {BOLD}ALL{RESET} entries')
+    print(f'  • Press {GRAY}Ctrl+C{RESET} to cancel\n')
     
-    choice = pretty_input('\n\t\tChoose (1/2/3/0): ').strip()
+    try:
+        choice = input_box('Number of oldest entries to clear (0 for all):').strip()
+        
+        if not choice:
+            print_warning('Clear operation cancelled.')
+            return
+        
+        try:
+            entries_to_clear = int(choice)
+        except ValueError:
+            print_error('Please enter a valid number.')
+            return
+        
+        if entries_to_clear < 0:
+            print_error('Number must be 0 or positive.')
+            return
+        
+        if entries_to_clear == 0:
+            entries_to_clear = total_entries
+            confirm_msg = f'Are you sure you want to clear ALL {total_entries} entries? (y/N):'
+        elif entries_to_clear > total_entries:
+            entries_to_clear = total_entries
+            confirm_msg = f'Only {total_entries} entries available. Clear all? (y/N):'
+        else:
+            confirm_msg = f'Clear the oldest {entries_to_clear} entries? (y/N):'
+        
+        confirm = input_box(confirm_msg).strip().lower()
+        if confirm != 'y':
+            print_warning('Clear operation cancelled.')
+            return
+        
+        # Verify master password
+        mpw = masked_input_box('Master password:')
+        if not verify_master(mpw):
+            print_error('Master password incorrect. Clear cancelled.')
+            write_log('CLEAR_LOG_FAILED')
+            return
+        
+        # Clear entries (oldest first)
+        if entries_to_clear == total_entries:
+            # Clear all - truncate the file
+            with open(LOG_FILE, 'w', encoding='utf-8') as f:
+                pass
+            print_success(f'All {total_entries} entries cleared!')
+        else:
+            # Keep the last (total - entries_to_clear) entries, remove oldest first
+            remaining_lines = lines[entries_to_clear:]
+            with open(LOG_FILE, 'w', encoding='utf-8') as f:
+                f.writelines(remaining_lines)
+            print_success(f'Cleared oldest {entries_to_clear} entries. {len(remaining_lines)} remaining.')
+        
+        write_log('CLEAR_LOG', f'Cleared {entries_to_clear} entries')
     
-    if choice == '0':
-        print('\t\tCancelled.')
+    except KeyboardInterrupt:
+        print_warning('\nClear operation cancelled.')
         return
+
+
+def show_about():
+    """Display information about the program."""
+    print_header('About Vanessa Kang', CYAN)
     
-    entries_to_clear = 0
-    if choice == '1':
-        entries_to_clear = min(10, total_entries)
-    elif choice == '2':
-        entries_to_clear = min(20, total_entries)
-    elif choice == '3':
-        entries_to_clear = total_entries
-    else:
-        print('\t\tInvalid option.')
-        return
+    print(f'{BOLD}{CYAN}Project Name:{RESET} Vanessa Kang')
+    print(f'{BOLD}{CYAN}Created by:{RESET} Ream Daly')
+    print(f'{BOLD}{CYAN}Date Created:{RESET} October 23, 2025')
+    print(f'{BOLD}{CYAN}Version:{RESET} 1.0.0')
+    print(f'{BOLD}{CYAN}Type:{RESET} Terminal Password Manager\n')
     
-    if entries_to_clear == total_entries:
-        confirm_msg = f'\t\tAre you sure you want to clear ALL {total_entries} entries? (y/N): '
-    else:
-        confirm_msg = f'\t\tAre you sure you want to clear the oldest {entries_to_clear} entries? (y/N): '
+    print(f'{BOLD}{GREEN}✓ Features:{RESET}')
+    print(f'  {GRAY}▸{RESET} Master password with strength validation')
+    print(f'  {GRAY}▸{RESET} Military-grade encryption (PBKDF2-HMAC-SHA256 + Fernet)')
+    print(f'  {GRAY}▸{RESET} Secure credential storage (website, account, username, phone)')
+    print(f'  {GRAY}▸{RESET} CRUD operations: Create, Read, Update, Delete')
+    print(f'  {GRAY}▸{RESET} Password generator (8-16 characters, fully customizable)')
+    print(f'  {GRAY}▸{RESET} Action logging and history tracking')
+    print(f'  {GRAY}▸{RESET} Automatic backups with restore functionality')
+    print(f'  {GRAY}▸{RESET} Session timeout (90 minutes inactivity)')
+    print(f'  {GRAY}▸{RESET} Clipboard integration (optional)')
+    print(f'  {GRAY}▸{RESET} Beautiful terminal UI with arrow-key navigation\n')
     
-    confirm = pretty_input(confirm_msg).strip().lower()
-    if confirm != 'y':
-        print('\t\tCancelled.')
-        return
+    print(f'{BOLD}{BLUE}⚙ Technical Details:{RESET}')
+    print(f'  {GRAY}▸{RESET} Language: Python 3')
+    print(f'  {GRAY}▸{RESET} Encryption: Fernet (symmetric encryption)')
+    print(f'  {GRAY}▸{RESET} Key Derivation: PBKDF2-HMAC-SHA256 (390,000 iterations)')
+    print(f'  {GRAY}▸{RESET} Storage: Encrypted binary vault + salted hash')
+    print(f'  {GRAY}▸{RESET} Backups: Timestamped, organized by type (vault/master/logs)\n')
     
-    # Verify master password
-    mpw = masked_input('\t\tEnter master password to confirm: ')
-    if not verify_master(mpw):
-        print('\n\t\tMaster password incorrect. Clear cancelled.')
-        write_log('CLEAR_LOG_FAILED')
-        return
+    print(f'{BOLD}{MAGENTA}📂 Files:{RESET}')
+    print(f'  {GRAY}▸{RESET} {BOLD}master.hash{RESET} - Master password hash')
+    print(f'  {GRAY}▸{RESET} {BOLD}vault.bin{RESET} - Encrypted credentials vault')
+    print(f'  {GRAY}▸{RESET} {BOLD}actions.log{RESET} - Activity log (plaintext)\n')
     
-    # Clear entries (oldest first)
-    if entries_to_clear == total_entries:
-        # Clear all - truncate the file
-        with open(LOG_FILE, 'w', encoding='utf-8') as f:
-            pass
-        print(f'\n\t\tAll {total_entries} entries cleared.')
-    else:
-        # Keep the last (total - entries_to_clear) entries, remove oldest first
-        remaining_lines = lines[entries_to_clear:]
-        with open(LOG_FILE, 'w', encoding='utf-8') as f:
-            f.writelines(remaining_lines)
-        print(f'\n\t\tCleared oldest {entries_to_clear} entries. {len(remaining_lines)} entries remaining.')
+    print(f'{BOLD}{YELLOW}⚠ Security Notice:{RESET}')
+    print(f'  This is a local password manager. Keep your files secure and backup')
+    print(f'  your master password safely. Lost master passwords cannot be recovered.\n')
     
-    write_log('CLEAR_LOG', f'Cleared {entries_to_clear} entries')
+    print(f'{GRAY}Press Enter to return to main menu...{RESET}')
+    input()
 
 
 def restore_from_backup():
     """Restore vault, master.hash, and actions.log from timestamped backups in subfolders."""
     if not os.path.exists(BACKUP_DIR):
-        print('\t\tNo backup directory found.')
+        print_error('No backup directory found.')
         return
     
-    print('\n\t\t===== RESTORE FROM BACKUP =====')
-    print('\t\tWarning: This will replace your current files!')
-    print('\t\t================================')
+    print_header('Restore From Backup', CYAN)
+    print(f'{YELLOW}⚠ Warning: This will replace your current files!{RESET}\n')
     
     # Get all vault backups with timestamps from vaults subfolder
     vaults_dir = os.path.join(BACKUP_DIR, BACKUP_SUBDIRS['vault'])
     if not os.path.exists(vaults_dir):
-        print('\t\tNo vault backups found.')
+        print_error('No vault backups found.')
         return
     
     vault_backups = []
@@ -749,95 +1278,186 @@ def restore_from_backup():
             vault_backups.append((file, mtime, file_path))
     
     if not vault_backups:
-        print('\t\tNo timestamped backups found.')
+        print_error('No timestamped backups found.')
         return
     
     # Sort by modification time (newest first)
     vault_backups.sort(key=lambda x: x[1], reverse=True)
     
-    print('\n\t\tAvailable backups:')
-    for idx, (filename, mtime, _) in enumerate(vault_backups[:15], 1):  # Show last 15
+    # Read log file to get actions with website names for each backup timestamp
+    log_entries = {}
+    if os.path.exists(LOG_FILE):
+        with open(LOG_FILE, 'r', encoding='utf-8') as f:
+            for line in f:
+                parts = [p.strip() for p in line.strip().split('|')]
+                if len(parts) >= 2:
+                    timestamp = parts[0]
+                    action = parts[1]
+                    website = parts[2] if len(parts) >= 3 else ''
+                    
+                    # Create descriptive action text
+                    if website:
+                        action_text = f"{action} - {website}"
+                    else:
+                        action_text = action
+                    
+                    # Store action with timestamp key (just date and time, no seconds)
+                    key = timestamp[:16]  # Get YYYY-MM-DD HH:MM
+                    log_entries[key] = action_text
+    
+    # Limit to 15 most recent backups
+    display_backups = vault_backups[:15]
+    
+    # Prepare backup list with descriptions
+    backup_options = []
+    for idx, (filename, mtime, file_path) in enumerate(display_backups, 1):
         timestamp = datetime.datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M:%S')
-        # Extract timestamp from filename for display
-        parts = filename.replace('vault_', '').replace('.bin', '').split('_')
-        if len(parts) >= 2:
-            display_time = f"{parts[0]} {parts[1].replace('-', ':')}"
-        else:
-            display_time = timestamp
-        print(f'\t\t{idx}. {display_time}')
+        timestamp_key = timestamp[:16]
+        action = log_entries.get(timestamp_key, 'BACKUP')
+        backup_options.append((idx, timestamp, action, filename, mtime, file_path))
     
-    choice = pretty_input('\n\t\tChoose backup number (or 0 to cancel): ').strip()
+    # Interactive arrow-key selection
+    selected_idx = 0
+    total_options = len(backup_options)
     
+    # Calculate column widths
     try:
-        choice_num = int(choice)
-        if choice_num == 0:
-            print('\t\tCancelled.')
-            return
-        if choice_num < 1 or choice_num > len(vault_backups):
-            print('\t\tInvalid selection.')
-            return
+        terminal_width = os.get_terminal_size().columns
+    except:
+        terminal_width = 120
+    
+    timestamp_width = 20
+    max_action_width = terminal_width - timestamp_width - 15
+    if max_action_width < 30:
+        max_action_width = 30
+    
+    while True:
+        # Clear screen and show header
+        print('\033[2J\033[H', end='')
+        print_header('Restore From Backup', CYAN)
+        print(f'{YELLOW}⚠ Warning: This will replace your current files!{RESET}\n')
         
-        selected_vault = vault_backups[choice_num - 1]
-        selected_filename = selected_vault[0]
+        # Print column headers
+        print(f'  {BOLD}{CYAN}{"#":<3}{RESET}  {BOLD}{CYAN}{"TIMESTAMP":<{timestamp_width}}{RESET} {GRAY}│{RESET} {BOLD}{CYAN}ACTION{RESET}')
+        print(f'  {GRAY}{"─" * 3}  {"─" * timestamp_width} ┼ {"─" * max_action_width}{RESET}')
         
-        # Extract timestamp from vault filename
-        timestamp_str = selected_filename.replace('vault_', '').replace('.bin', '')
-        
-        # Build corresponding master.hash and actions.log paths in their subfolders
-        master_dir = os.path.join(BACKUP_DIR, BACKUP_SUBDIRS['master'])
-        actions_dir = os.path.join(BACKUP_DIR, BACKUP_SUBDIRS['actions'])
-        
-        master_backup = os.path.join(master_dir, f'master_{timestamp_str}.hash')
-        log_backup = os.path.join(actions_dir, f'actions_{timestamp_str}.log')
-        vault_backup = selected_vault[2]
-        
-        # Check if all three files exist
-        files_exist = {
-            'vault': os.path.exists(vault_backup),
-            'master': os.path.exists(master_backup),
-            'log': os.path.exists(log_backup)
-        }
-        
-        print(f'\n\t\tFiles found in this backup:')
-        print(f'\t\t  Vault: {"✓" if files_exist["vault"] else "✗"}')
-        print(f'\t\t  Master: {"✓" if files_exist["master"] else "✗"}')
-        print(f'\t\t  Log: {"✓" if files_exist["log"] else "✗"}')
-        
-        if not files_exist['vault'] or not files_exist['master']:
-            print('\n\t\tCritical files missing from backup. Cannot restore.')
-            return
-        
-        # Verify master password before restore
-        mpw = masked_input('\n\t\tEnter current master password to authorize restore: ')
-        if not verify_master(mpw):
-            print('\n\t\tMaster password incorrect. Restore cancelled.')
-            write_log('RESTORE_FAILED')
-            return
-        
-        confirm = pretty_input('\n\t\tAre you SURE you want to restore? Current data will be lost! (y/N): ').strip().lower()
-        if confirm != 'y':
-            print('\t\tCancelled.')
-            return
-        
-        # Perform restore
-        try:
-            shutil.copy2(vault_backup, VAULT_FILE)
-            shutil.copy2(master_backup, MASTER_HASH_FILE)
-            if files_exist['log']:
-                shutil.copy2(log_backup, LOG_FILE)
+        # Display options
+        for idx, (num, timestamp, action, _, _, _) in enumerate(backup_options):
+            # Truncate action if too long
+            display_action = action
+            if len(display_action) > max_action_width:
+                display_action = display_action[:max_action_width - 3] + '...'
             
-            print('\n\t\t✓ Restore completed successfully!')
-            print('\t\t  Please restart the program to use the restored data.')
-            write_log('RESTORE_SUCCESS', selected_filename)
-            sys.exit(0)
+            # Color code the action
+            if 'FAILED' in action:
+                action_color = RED
+            elif 'CREATE' in action or 'UPDATE' in action or 'SET_MASTER' in action:
+                action_color = GREEN
+            elif 'DELETE' in action or 'CLEAR' in action:
+                action_color = YELLOW
+            else:
+                action_color = CYAN
             
-        except Exception as e:
-            print(f'\n\t\tRestore failed: {e}')
-            write_log('RESTORE_ERROR')
-            
-    except ValueError:
-        print('\t\tInvalid input.')
+            if idx == selected_idx:
+                # Highlighted option
+                print(f'  {REVERSE}{CYAN}{num:>2}.  {timestamp:<{timestamp_width}} │ {display_action}{RESET}')
+            else:
+                # Normal option
+                print(f'  {DIM}{CYAN}{num:>2}.{RESET}  {DIM}{timestamp:<{timestamp_width}}{RESET} {GRAY}│{RESET} {action_color}{display_action}{RESET}')
+        
+        print(f'\n{DIM}  (Use ↑↓ arrows and Enter to select, or press 0 to cancel){RESET}')
+        
+        # Read arrow keys
+        key = msvcrt.getch()
+        
+        if key == b'\xe0' or key == b'\x00':  # Arrow key prefix
+            key = msvcrt.getch()
+            if key == b'H':  # Up arrow
+                selected_idx = (selected_idx - 1) % total_options
+            elif key == b'P':  # Down arrow
+                selected_idx = (selected_idx + 1) % total_options
+        elif key == b'\r':  # Enter key
+            choice_num = backup_options[selected_idx][0]
+            break
+        elif key == b'\x1b':  # ESC key
+            choice_num = 0
+            break
+        elif key in (b'k', b'K'):  # Vim-style up
+            selected_idx = (selected_idx - 1) % total_options
+        elif key in (b'j', b'J'):  # Vim-style down
+            selected_idx = (selected_idx + 1) % total_options
+        elif key == b'0':  # Press 0 to cancel
+            choice_num = 0
+            break
+    
+    # Clear screen after selection
+    print('\033[2J\033[H', end='')
+    
+    if choice_num == 0:
+        print_warning('Restore cancelled.')
         return
+    
+    # Get selected backup info
+    selected_backup = backup_options[selected_idx]
+    selected_filename = selected_backup[3]
+    selected_vault_path = selected_backup[5]
+    
+    timestamp_str = selected_filename[6:-4]
+    
+    # Construct paths for corresponding master.hash and actions.log backups
+    master_dir = os.path.join(BACKUP_DIR, BACKUP_SUBDIRS['master'])
+    actions_dir = os.path.join(BACKUP_DIR, BACKUP_SUBDIRS['actions'])
+    
+    selected_master_filename = f'master_{timestamp_str}.hash'
+    selected_actions_filename = f'actions_{timestamp_str}.log'
+    
+    selected_master_path = os.path.join(master_dir, selected_master_filename)
+    selected_actions_path = os.path.join(actions_dir, selected_actions_filename)
+    
+    # Check if all three files exist
+    files_exist = {
+        'vault': os.path.exists(selected_vault_path),
+        'master': os.path.exists(selected_master_path),
+        'log': os.path.exists(selected_actions_path)
+    }
+    
+    print_header('Backup File Status', CYAN)
+    print(f'  {GREEN}✓{RESET} Vault' if files_exist["vault"] else f'  {RED}✗{RESET} Vault')
+    print(f'  {GREEN}✓{RESET} Master' if files_exist["master"] else f'  {RED}✗{RESET} Master')
+    print(f'  {GREEN}✓{RESET} Log\n' if files_exist["log"] else f'  {RED}✗{RESET} Log\n')
+    
+    if not files_exist['vault'] or not files_exist['master']:
+        print_error('Critical files missing from backup. Cannot restore.')
+        return
+    
+    # Verify master password before restore
+    mpw = masked_input_box('Master password:')
+    if not verify_master(mpw):
+        print_error('Master password incorrect. Restore cancelled.')
+        write_log('RESTORE_FAILED')
+        return
+    
+    confirm = input_box('Are you SURE you want to restore? Current data will be lost! (y/N):').strip().lower()
+    if confirm != 'y':
+        print_warning('Restore cancelled.')
+        return
+    
+    # Perform restore
+    try:
+        shutil.copy2(selected_vault_path, VAULT_FILE)
+        shutil.copy2(selected_master_path, MASTER_HASH_FILE)
+        if files_exist['log']:
+            shutil.copy2(selected_actions_path, LOG_FILE)
+        
+        print_success('Restore completed successfully!')
+        print(f'{YELLOW}  Please restart the program to use the restored data.{RESET}')
+        write_log('RESTORE_SUCCESS', selected_filename)
+        sys.exit(0)
+        
+    except Exception as e:
+        print_error(f'Restore failed: {e}')
+        write_log('RESTORE_ERROR')
+
 
 
 def main():
@@ -848,37 +1468,24 @@ def main():
 
     update_activity_time()  # Initialize activity time
     for _ in range(3):
-        mpw = masked_input('\n\t\tEnter master password to unlock vault: ')
+        mpw = masked_input_box('Master password:')
         if verify_master(mpw):
             try:
                 vault = load_vault(mpw)
             except Exception as e:
-                print('\t\tFailed to load vault:', e)
+                print('Failed to load vault:', e)
                 vault = {}
             break
         else:
-            print('\n\t\tIncorrect master password.')
+            print('Incorrect master password.')
     else:
-        print('\t\tToo many failed attempts. Exiting.')
+        print('Too many failed attempts. Exiting.')
         sys.exit(1)
 
     while True:
-        print('\n\t\t=======================')
-        print('\n\t\t---- Vannnesa Kang ----')
-        print('\t\t-----------------------')
-        print('\t\t    Password Manager')
-        print('\t\t=======================')
-        print('\n\t\t1) Create entry')
-        print('\t\t2) Read / View entry')
-        print('\t\t3) Update entry')
-        print('\t\t4) Delete entry')
-        print('\t\t5) List all websites')
-        print('\t\t6) View action log')
-        print('\t\t7) Clear action log')
-        print('\t\t8) Restore from backup')
-        print('\t\t9) Change master password')
-        print('\t\t0) Exit')
-        choice = pretty_input('\n\t\tChoose: ').strip()
+        # Display interactive menu with arrow key navigation
+        choice = interactive_menu()
+        
         if choice == '1':
             vault = create_entry(vault)
             save_vault(vault, mpw)
@@ -898,20 +1505,20 @@ def main():
         elif choice == '8':
             restore_from_backup()
         elif choice == '9':
-            cur = masked_input('\n\t\tEnter current master password: ')
+            cur = masked_input_box('Current master password:')
             if not verify_master(cur):
-                print('\t\tIncorrect.')
-                write_log('\t\tCHANGE_MASTER_FAILED')
+                print_error('Incorrect master password.')
+                write_log('CHANGE_MASTER_FAILED')
             else:
                 while True:
-                    new1 = masked_input('\n\t\tEnter new master password: ')
-                    new2 = masked_input('\t\tRepeat new master password: ')
+                    new1 = masked_input_box('New master password:')
+                    new2 = masked_input_box('Repeat new master password:')
                     if new1 != new2:
-                        print('\t\tNot the same.')
+                        print_error('Passwords do not match.')
                         continue
                     if not is_strong_password(new1):
-                        print('\t\tNot strong enough.')
-                        cont = pretty_input('\t\tTry again? (y to retry): ').strip().lower()
+                        print_error('Password not strong enough.')
+                        cont = input_box('Try again? (y to retry):').strip().lower()
                         if cont == 'y':
                             continue
                         else:
@@ -925,14 +1532,19 @@ def main():
                     save_vault(vault, new1)
                     backup_files()  # Backup after changing master password
                     mpw = new1
-                    print('\t\tMaster password changed.')
-                    write_log('\t\tCHANGE_MASTER')
+                    print_success('Master password changed successfully!')
+                    write_log('CHANGE_MASTER')
                     break
+        elif choice == 'c' or choice == 'C':
+            # Clear terminal screen
+            os.system('cls' if os.name == 'nt' else 'clear')
+        elif choice == 'a' or choice == 'A':
+            show_about()
         elif choice == '0':
-            print('\n\t\tGoodbye.')
+            print(f'\n{CYAN}Goodbye! Stay secure! 👋{RESET}')
             break
         else:
-            print('\n\t\tUnknown option.')
+            print_error('Unknown option.')
 
 if __name__ == '__main__':
     main()
